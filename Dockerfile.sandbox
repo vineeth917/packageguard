@@ -1,0 +1,19 @@
+FROM python:3.10-slim
+
+# Minimal sandbox — no network access at runtime (enforced by docker run --network=none)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends strace procps \
+    && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir pip setuptools wheel
+
+# Create non-root user for sandbox
+RUN useradd -m -s /bin/bash sandbox
+USER sandbox
+WORKDIR /home/sandbox
+
+# The scan script is mounted at runtime
+# Usage: docker run --network=none --memory=512m --cpus=1 \
+#          -v /path/to/scan_script.py:/home/sandbox/scan.py \
+#          packageguard-sandbox python scan.py <package_name> <version>
+
+ENTRYPOINT ["python"]

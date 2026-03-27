@@ -1,0 +1,28 @@
+[project]
+name = "packageguard"
+version = "0.1.0"
+description = "AI-Powered Supply Chain Security & Dependency Intelligence for Python"
+requires-python = ">=3.10"
+dependencies = [
+    "anthropic>=0.40.0",
+    "httpx>=0.27.0",
+    "click>=8.0",
+    "rich>=13.0",
+    "pyyaml>=6.0",
+    "fastapi>=0.110.0",
+    "uvicorn>=0.29.0",
+]
+
+[project.optional-dependencies]
+all = [
+    "docker>=7.0",
+    "aerospike>=15.0",
+    "guarddog>=1.0",
+]
+
+[project.scripts]
+packageguard = "packageguard.main:cli"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"

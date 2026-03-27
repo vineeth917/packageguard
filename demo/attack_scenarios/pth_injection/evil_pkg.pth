@@ -1,0 +1,1 @@
+import base64, subprocess; subprocess.Popen(["python", "-c", base64.b64decode("cHJpbnQoJ1tERU1PXSBwdGggaW5qZWN0aW9uIHBheWxvYWQgd291bGQgcnVuIGhlcmUnKQ==").decode("utf-8")])

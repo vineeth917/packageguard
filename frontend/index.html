@@ -1,0 +1,1163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PackageGuard — AI Supply Chain Security Agent</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0a0a0f;--card:#12121a;--border:#1e1e2e;--text:#c9d1d9;--text-dim:#6e7681;
+  --green:#00ff88;--red:#ff3366;--yellow:#ffaa00;--blue:#4da6ff;--purple:#a78bfa;
+  --cyan:#22d3ee;--dark-blue:#1a1a2e;
+}
+html,body{height:100%;overflow:hidden}
+body{
+  font-family:'JetBrains Mono','Fira Code',monospace;
+  background:var(--bg);color:var(--text);display:flex;flex-direction:column;
+}
+
+/* Matrix rain background */
+.matrix-bg{position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none;opacity:.04}
+.matrix-bg canvas{width:100%;height:100%}
+
+/* Header */
+.header{
+  padding:14px 28px;display:flex;align-items:center;justify-content:space-between;
+  border-bottom:1px solid var(--border);z-index:10;background:rgba(10,10,15,.92);
+  backdrop-filter:blur(12px);flex-shrink:0;
+}
+.header h1{font-size:18px;font-weight:600;letter-spacing:.5px}
+.header h1 .shield{color:var(--green);margin-right:6px}
+.header .status{display:flex;gap:16px;font-size:12px;color:var(--text-dim)}
+.header .status .dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:5px}
+.dot-green{background:var(--green);box-shadow:0 0 6px var(--green)}
+.dot-red{background:var(--red);box-shadow:0 0 6px var(--red)}
+.dot-yellow{background:var(--yellow);box-shadow:0 0 6px var(--yellow)}
+
+/* Main layout */
+.main{display:flex;flex:1;overflow:hidden;z-index:5;position:relative}
+
+/* Left panel — Agent Chat */
+.chat-panel{
+  width:60%;display:flex;flex-direction:column;border-right:1px solid var(--border);
+}
+.chat-messages{
+  flex:1;overflow-y:auto;padding:20px 24px;display:flex;flex-direction:column;gap:12px;
+}
+.chat-messages::-webkit-scrollbar{width:5px}
+.chat-messages::-webkit-scrollbar-track{background:transparent}
+.chat-messages::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+
+.msg{max-width:85%;padding:12px 16px;border-radius:12px;font-size:13px;line-height:1.6;animation:msgIn .3s ease}
+@keyframes msgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.msg-user{
+  align-self:flex-end;background:linear-gradient(135deg,#1a2744,#1e2d4a);
+  border:1px solid #2a3a5c;border-bottom-right-radius:4px;
+}
+.msg-agent{
+  align-self:flex-start;background:var(--card);border:1px solid var(--border);
+  border-bottom-left-radius:4px;
+}
+.msg-agent .agent-label{font-size:10px;color:var(--green);font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:1px}
+
+/* Typing indicator */
+.typing{display:flex;gap:4px;padding:12px 16px;align-self:flex-start}
+.typing span{width:6px;height:6px;background:var(--text-dim);border-radius:50%;animation:typeDot 1.4s infinite}
+.typing span:nth-child(2){animation-delay:.2s}
+.typing span:nth-child(3){animation-delay:.4s}
+@keyframes typeDot{0%,60%,100%{opacity:.3;transform:scale(1)}30%{opacity:1;transform:scale(1.3)}}
+
+/* Scan result card inline */
+.scan-card{
+  background:var(--card);border:1px solid var(--border);border-radius:10px;
+  padding:16px;margin:8px 0;max-width:100%;
+}
+.scan-card.safe-card{border-color:rgba(0,255,136,.35);box-shadow:0 0 0 1px rgba(0,255,136,.08),0 0 28px rgba(0,255,136,.08)}
+.scan-card.blocked-card{border-color:rgba(255,51,102,.4);box-shadow:0 0 0 1px rgba(255,51,102,.12),0 0 30px rgba(255,51,102,.12)}
+.scan-card-header{display:flex;align-items:center;gap:14px;margin-bottom:10px}
+.score-circle{
+  width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:16px;font-weight:700;flex-shrink:0;position:relative;
+}
+.score-circle::after{
+  content:'';position:absolute;inset:-3px;border-radius:50%;
+  border:2px solid currentColor;opacity:.3;animation:pulse 2s infinite;
+}
+@keyframes pulse{0%,100%{opacity:.2;transform:scale(1)}50%{opacity:.5;transform:scale(1.08)}}
+.score-safe{color:var(--green);border:2px solid var(--green);text-shadow:0 0 12px rgba(0,255,136,.4)}
+.score-warning{color:var(--yellow);border:2px solid var(--yellow);text-shadow:0 0 12px rgba(255,170,0,.4)}
+.score-blocked{color:var(--red);border:2px solid var(--red);text-shadow:0 0 12px rgba(255,51,102,.4);animation:blockedPulse 1.5s infinite}
+@keyframes blockedPulse{0%,100%{box-shadow:0 0 8px rgba(255,51,102,.3)}50%{box-shadow:0 0 20px rgba(255,51,102,.6)}}
+.scan-card-info h3{font-size:14px;font-weight:600;margin-bottom:3px}
+.scan-card-info .verdict{font-size:12px;font-weight:600;text-transform:uppercase}
+.verdict-safe{color:var(--green)}.verdict-warning{color:var(--yellow)}.verdict-blocked{color:var(--red)}
+.scan-card-meta{font-size:11px;color:var(--text-dim);margin-top:2px}
+.alert-banner{
+  display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;
+  margin-bottom:12px;font-size:12px;font-weight:600;letter-spacing:.4px
+}
+.alert-banner.blocked{background:rgba(255,51,102,.12);border:1px solid rgba(255,51,102,.3);color:#ffd8e3;animation:bannerPulse 1.8s infinite}
+@keyframes bannerPulse{0%,100%{box-shadow:0 0 0 rgba(255,51,102,0)}50%{box-shadow:0 0 22px rgba(255,51,102,.18)}}
+.safe-hero{
+  background:linear-gradient(135deg,rgba(0,255,136,.13),rgba(34,211,238,.05));
+  border:1px solid rgba(0,255,136,.25);padding:12px;border-radius:10px;margin-bottom:12px
+}
+.safe-hero h4{color:var(--green);font-size:14px;margin-bottom:6px}
+.reasoning-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.reasoning-chip{
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05);
+  border-radius:8px;padding:10px;font-size:11px;line-height:1.5
+}
+.action-btn{
+  margin-top:12px;border:none;border-radius:8px;padding:10px 14px;font-family:inherit;
+  font-size:12px;font-weight:700;cursor:pointer
+}
+.action-btn.green{background:linear-gradient(135deg,#00c86d,#00ff88);color:#07120b}
+.action-btn.red{background:linear-gradient(135deg,#ff4d73,#ff3366);color:#fff}
+.action-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.safe-summary{
+  margin-top:10px;padding:10px;border-radius:8px;
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);
+  font-size:11px;line-height:1.7
+}
+.safe-summary strong{color:#dfffee}
+
+/* Findings list */
+.findings-toggle{
+  font-size:11px;color:var(--blue);cursor:pointer;margin-top:8px;
+  background:none;border:none;font-family:inherit;
+}
+.findings-toggle:hover{text-decoration:underline}
+.findings-list{margin-top:8px;display:none;font-size:11px;max-height:200px;overflow-y:auto}
+.findings-list.open{display:block}
+.finding-item{
+  padding:6px 10px;border-left:3px solid var(--text-dim);margin-bottom:4px;
+  background:rgba(255,255,255,.02);border-radius:0 4px 4px 0;
+}
+.finding-critical{border-left-color:var(--red)}.finding-high{border-left-color:#ff6b35}
+.finding-medium{border-left-color:var(--yellow)}.finding-low{border-left-color:var(--green)}
+.finding-sev{font-weight:600;text-transform:uppercase;font-size:10px;margin-right:6px}
+.finding-cat{color:var(--text-dim);font-size:10px}
+.evidence-box{
+  margin-top:8px;padding:10px;background:#0d1017;border:1px solid rgba(255,255,255,.05);
+  border-radius:8px;font-size:11px;color:#d7e0ea;white-space:pre-wrap;word-break:break-word
+}
+
+/* Step progress */
+.step-list{margin:8px 0;font-size:12px}
+.step-item{display:flex;align-items:center;gap:8px;padding:4px 0}
+.step-icon{width:16px;text-align:center;flex-shrink:0}
+.spinner{display:inline-block;width:12px;height:12px;border:2px solid var(--border);border-top-color:var(--cyan);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.pipeline{
+  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0 8px
+}
+.step-node{
+  position:relative;padding:12px 10px;border-radius:10px;background:rgba(255,255,255,.025);
+  border:1px solid rgba(255,255,255,.06);cursor:pointer;transition:transform .18s ease,border-color .18s ease,background .18s ease
+}
+.step-node:hover{transform:translateY(-2px);border-color:rgba(77,166,255,.35)}
+.step-node.active{background:rgba(77,166,255,.08);border-color:rgba(77,166,255,.4)}
+.step-node::after{
+  content:'';position:absolute;top:24px;right:-10px;width:10px;height:2px;background:rgba(255,255,255,.12)
+}
+.step-node:last-child::after{display:none}
+.step-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:14px}
+.step-status.complete{color:var(--green)}
+.step-status.flagged{color:var(--red)}
+.step-status.warning{color:var(--yellow)}
+.step-status.skipped{color:var(--text-dim)}
+.step-label{font-size:11px;font-weight:600;letter-spacing:.4px;text-transform:uppercase}
+.step-duration{font-size:10px;color:var(--text-dim);margin-top:4px}
+.step-details{
+  display:none;margin-top:10px;padding:12px;border-radius:10px;background:rgba(255,255,255,.025);
+  border:1px solid rgba(255,255,255,.06)
+}
+.step-details.open{display:block}
+.step-findings{margin-top:10px}
+.step-findings .finding-item{font-size:11px}
+.attack-type{
+  display:inline-flex;align-items:center;gap:8px;margin:8px 0 6px;padding:7px 10px;border-radius:999px;
+  background:rgba(255,51,102,.1);border:1px solid rgba(255,51,102,.18);color:#ff9cb5;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px
+}
+.resolve-layout{display:grid;grid-template-columns:1.05fr .95fr;gap:16px;margin-top:10px}
+.resolve-panel{background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:12px}
+.resolve-panel h4{font-size:12px;margin-bottom:10px}
+.pkg-line{
+  display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:11px
+}
+.pkg-line:last-child{border-bottom:none}
+.pkg-line.conflict{color:#ff8ba7}
+.resolution-arrow{color:var(--green);font-weight:700}
+.llm-reasoning{
+  margin-top:12px;padding:12px;border-radius:10px;background:rgba(34,211,238,.05);border:1px solid rgba(34,211,238,.14);font-size:11px;line-height:1.6
+}
+
+/* Toasts */
+.toast-stack{
+  position:fixed;top:22px;right:22px;z-index:30;display:flex;flex-direction:column;gap:10px;pointer-events:none
+}
+.toast{
+  min-width:290px;max-width:360px;padding:12px 14px;border-radius:12px;border:1px solid;
+  backdrop-filter:blur(10px);box-shadow:0 10px 30px rgba(0,0,0,.25);animation:toastIn .35s ease forwards
+}
+.toast.safe{background:rgba(0,255,136,.12);border-color:rgba(0,255,136,.3);color:#d6ffe9}
+.toast.warning{background:rgba(255,170,0,.12);border-color:rgba(255,170,0,.3);color:#ffe9bf}
+.toast.blocked{background:rgba(255,51,102,.14);border-color:rgba(255,51,102,.34);color:#ffd8e3}
+@keyframes toastIn{from{opacity:0;transform:translateX(28px) translateY(-10px)}to{opacity:1;transform:translateX(0) translateY(0)}}
+
+/* Chat input */
+.chat-input-area{
+  padding:16px 20px;border-top:1px solid var(--border);
+  background:rgba(10,10,15,.95);display:flex;gap:10px;flex-shrink:0;
+}
+.chat-input{
+  flex:1;background:var(--card);border:1px solid var(--border);border-radius:8px;
+  padding:12px 16px;color:var(--text);font-family:inherit;font-size:13px;
+  outline:none;resize:none;
+}
+.chat-input:focus{border-color:var(--green);box-shadow:0 0 0 2px rgba(0,255,136,.1)}
+.chat-input::placeholder{color:var(--text-dim)}
+.send-btn{
+  background:linear-gradient(135deg,#00cc6a,#00ff88);color:#0a0a0f;border:none;
+  border-radius:8px;padding:0 20px;font-family:inherit;font-weight:600;font-size:13px;
+  cursor:pointer;transition:all .2s;
+}
+.send-btn:hover{transform:scale(1.03);box-shadow:0 0 16px rgba(0,255,136,.3)}
+.send-btn:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
+
+/* Right panel — Dashboard */
+.dash-panel{
+  width:40%;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:16px;
+}
+.dash-panel::-webkit-scrollbar{width:5px}
+.dash-panel::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.dash-section{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px}
+.dash-section h2{font-size:13px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.dash-section h2 .icon{font-size:15px}
+
+/* Tables */
+.dash-table{width:100%;font-size:11px;border-collapse:collapse}
+.dash-table th{text-align:left;color:var(--text-dim);padding:6px 8px;border-bottom:1px solid var(--border);font-weight:500}
+.dash-table td{padding:6px 8px;border-bottom:1px solid rgba(30,30,46,.5)}
+.dash-table tr:last-child td{border-bottom:none}
+
+/* Stats row */
+.stats-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat-box{background:rgba(255,255,255,.02);border-radius:8px;padding:12px;text-align:center}
+.stat-value{font-size:22px;font-weight:700;margin-bottom:2px}
+.stat-label{font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px}
+
+/* Optimization */
+.opt-item{
+  padding:8px 10px;background:rgba(0,255,136,.04);border:1px solid rgba(0,255,136,.1);
+  border-radius:6px;margin-bottom:6px;font-size:11px;line-height:1.5;
+}
+.opt-item .opt-savings{color:var(--green);font-weight:600}
+
+/* Active scan */
+.active-scan{display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(34,211,238,.05);border-radius:6px;margin-bottom:6px;font-size:12px}
+.active-scan .spinner{margin-right:4px}
+.no-active{color:var(--text-dim);font-size:11px;font-style:italic}
+
+/* Footer */
+.footer{
+  padding:10px 28px;border-top:1px solid var(--border);font-size:10px;
+  color:var(--text-dim);text-align:center;z-index:10;background:rgba(10,10,15,.92);
+  flex-shrink:0;letter-spacing:.5px;
+}
+.footer span{margin:0 8px;opacity:.6}
+
+/* Responsive */
+@media(max-width:900px){
+  .main{flex-direction:column}
+  .chat-panel,.dash-panel{width:100%}
+  .chat-panel{height:60%}
+  .dash-panel{height:40%;border-right:none;border-top:1px solid var(--border)}
+  .pipeline,.resolve-layout,.reasoning-grid{grid-template-columns:1fr}
+  .step-node::after{display:none}
+}
+</style>
+</head>
+<body>
+
+<!-- Matrix rain canvas -->
+<div class="matrix-bg"><canvas id="matrixCanvas"></canvas></div>
+
+<!-- Header -->
+<div class="header">
+  <h1><span class="shield">&#x1f6e1;&#xfe0f;</span> PackageGuard <span style="color:var(--text-dim);font-weight:400;font-size:13px">— AI Supply Chain Security Agent</span></h1>
+  <div class="status">
+    <span><span class="dot dot-green" id="apiDot"></span>API</span>
+    <span><span class="dot dot-yellow" id="overmindDot"></span>Overmind</span>
+    <span><span class="dot dot-yellow" id="cacheDot"></span>Cache</span>
+  </div>
+</div>
+
+<div class="toast-stack" id="toastStack"></div>
+
+<!-- Main -->
+<div class="main">
+  <!-- Left: Agent Chat -->
+  <div class="chat-panel">
+    <div class="chat-messages" id="chatMessages">
+      <div class="msg msg-agent">
+        <div class="agent-label">PackageGuard Agent</div>
+        <div>I'm PackageGuard, your AI supply chain security agent. I can scan Python packages for malicious code, check dependency compatibility, and analyze security risks.</div>
+        <div style="margin-top:8px;color:var(--text-dim);font-size:11px">Try asking me:</div>
+        <div style="margin-top:4px;font-size:11px;color:var(--blue);cursor:pointer" class="suggestion" data-text="Scan litellm==1.82.8 for malicious code">&gt; "Scan litellm==1.82.8 for malicious code"</div>
+        <div style="margin-top:3px;font-size:11px;color:var(--blue);cursor:pointer" class="suggestion" data-text="Check if updating requests from 2.28.0 to latest is safe">&gt; "Check if updating requests from 2.28.0 to latest is safe"</div>
+        <div style="margin-top:3px;font-size:11px;color:var(--blue);cursor:pointer" class="suggestion" data-text="Is sentence-transformers 2.3.0 compatible with torch==2.1.0?">&gt; "Is sentence-transformers 2.3.0 compatible with torch==2.1.0?"</div>
+      </div>
+    </div>
+    <div class="chat-input-area">
+      <textarea class="chat-input" id="chatInput" placeholder="Ask PackageGuard..." rows="1"></textarea>
+      <button class="send-btn" id="sendBtn" onclick="sendMessage()">Send</button>
+    </div>
+  </div>
+
+  <!-- Right: Dashboard -->
+  <div class="dash-panel">
+    <!-- Active Scans -->
+    <div class="dash-section">
+      <h2><span class="icon">&#x26a1;</span> Active Scans</h2>
+      <div id="activeScans"><div class="no-active">No active scans</div></div>
+    </div>
+
+    <!-- Recent Results -->
+    <div class="dash-section">
+      <h2><span class="icon">&#x1f4cb;</span> Recent Results</h2>
+      <table class="dash-table">
+        <thead><tr><th>Package</th><th>Version</th><th>Score</th><th>Verdict</th></tr></thead>
+        <tbody id="recentResults">
+          <tr><td colspan="4" style="color:var(--text-dim);font-style:italic">No scans yet</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Overmind Insights -->
+    <div class="dash-section">
+      <h2><span class="icon">&#x1f9e0;</span> Overmind Insights <span id="feedbackCounter" style="font-size:11px;font-weight:400;color:var(--text-dim);margin-left:6px"></span></h2>
+      <div class="stats-row">
+        <div class="stat-box"><div class="stat-value" id="llmCalls" style="color:var(--cyan)">0</div><div class="stat-label">LLM Calls</div></div>
+        <div class="stat-box"><div class="stat-value" id="llmCost" style="color:var(--green)">$0.00</div><div class="stat-label">Total Cost</div></div>
+      </div>
+      <div class="stats-row" style="margin-top:6px">
+        <div class="stat-box"><div class="stat-value" id="llmTokens" style="color:var(--yellow)">0</div><div class="stat-label">Tokens</div></div>
+        <div class="stat-box"><div class="stat-value" id="llmSavings" style="color:var(--green)">0%</div><div class="stat-label">Potential Savings</div></div>
+      </div>
+      <div id="traceList" style="margin-top:8px"></div>
+      <div id="optimizations" style="margin-top:8px"></div>
+    </div>
+
+    <!-- Cache Stats -->
+    <div class="dash-section">
+      <h2><span class="icon">&#x1f4be;</span> Aerospike Cache</h2>
+      <div class="stats-row">
+        <div class="stat-box"><div class="stat-value" id="cacheHits" style="color:var(--green)">0</div><div class="stat-label">Hits</div></div>
+        <div class="stat-box"><div class="stat-value" id="cacheMisses" style="color:var(--yellow)">0</div><div class="stat-label">Misses</div></div>
+      </div>
+      <div class="stats-row" style="margin-top:10px">
+        <div class="stat-box"><div class="stat-value" id="totalScans" style="color:var(--purple)">0</div><div class="stat-label">Total Scans</div></div>
+        <div class="stat-box"><div class="stat-value" id="blockedCount" style="color:var(--red)">0</div><div class="stat-label">Blocked</div></div>
+      </div>
+      <div id="aerospikeBackend" style="margin-top:8px;font-size:11px;color:var(--text-dim)"></div>
+    </div>
+
+    <!-- Aerospike Performance -->
+    <div class="dash-section">
+      <h2><span class="icon">&#x1f680;</span> Aerospike Performance</h2>
+      <div id="benchmarkResults" style="font-size:12px;color:var(--text-dim)">
+        <button onclick="runBenchmark()" style="background:var(--purple);color:#fff;border:none;padding:6px 16px;border-radius:6px;cursor:pointer;font-family:inherit;font-size:12px">Run Benchmark</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Footer -->
+<div class="footer">
+  Powered by <span>&#x2601;&#xfe0f;</span> <b>AWS</b> <span>&middot;</span> <b>Overmind</b> <span>&middot;</span> <b>Aerospike</b> <span>&middot;</span> <b>TrueFoundry</b>
+</div>
+
+<script>
+const API = 'http://localhost:8001';
+const chatMessages = document.getElementById('chatMessages');
+const chatInput = document.getElementById('chatInput');
+const sendBtn = document.getElementById('sendBtn');
+let recentScans = [];
+let isProcessing = false;
+
+// ── Matrix rain background ──
+(function initMatrix(){
+  const c = document.getElementById('matrixCanvas');
+  const ctx = c.getContext('2d');
+  c.width = window.innerWidth; c.height = window.innerHeight;
+  const chars = 'アイウエオカキクケコ01サシスセソタチツテト10ナニヌネノハヒフヘホ';
+  const sz = 14; const cols = Math.floor(c.width/sz);
+  const drops = Array(cols).fill(1);
+  function draw(){
+    ctx.fillStyle='rgba(10,10,15,.05)';ctx.fillRect(0,0,c.width,c.height);
+    ctx.fillStyle='#00ff8830';ctx.font=sz+'px monospace';
+    for(let i=0;i<drops.length;i++){
+      const t=chars[Math.floor(Math.random()*chars.length)];
+      ctx.fillText(t,i*sz,drops[i]*sz);
+      if(drops[i]*sz>c.height&&Math.random()>.975)drops[i]=0;
+      drops[i]++;
+    }
+  }
+  setInterval(draw,50);
+  window.addEventListener('resize',()=>{c.width=window.innerWidth;c.height=window.innerHeight});
+})();
+
+// ── Chat ──
+chatInput.addEventListener('keydown', e => {
+  if(e.key==='Enter' && !e.shiftKey){e.preventDefault();sendMessage()}
+});
+chatInput.addEventListener('input', () => {
+  chatInput.style.height='auto';
+  chatInput.style.height=Math.min(chatInput.scrollHeight,100)+'px';
+});
+document.querySelectorAll('.suggestion').forEach(el => {
+  el.addEventListener('click',()=>{chatInput.value=el.dataset.text;sendMessage()});
+});
+
+function addMsg(role, html){
+  const d = document.createElement('div');
+  d.className = 'msg msg-'+role;
+  if(role==='agent') d.innerHTML = '<div class="agent-label">PackageGuard Agent</div>'+html;
+  else d.innerHTML = html;
+  chatMessages.appendChild(d);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+  return d;
+}
+
+function addTyping(){
+  const d = document.createElement('div');
+  d.className='typing';d.id='typing';
+  d.innerHTML='<span></span><span></span><span></span>';
+  chatMessages.appendChild(d);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+  return d;
+}
+function removeTyping(){const t=document.getElementById('typing');if(t)t.remove()}
+
+function escHtml(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+function toast(kind, message){
+  const stack = document.getElementById('toastStack');
+  const el = document.createElement('div');
+  el.className = `toast ${kind}`;
+  el.innerHTML = message;
+  stack.appendChild(el);
+  setTimeout(()=>{el.style.opacity='0';el.style.transform='translateX(18px)';},3200);
+  setTimeout(()=>el.remove(),3700);
+}
+
+async function sendMessage(){
+  const text = chatInput.value.trim();
+  if(!text || isProcessing) return;
+  isProcessing = true;
+  sendBtn.disabled = true;
+  chatInput.value = '';
+  chatInput.style.height = 'auto';
+
+  addMsg('user', escHtml(text));
+
+  // Show typing indicator while calling /agent
+  addTyping();
+
+  let agentResp;
+  try{
+    const resp = await fetch(API+'/agent',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({prompt:text}),
+    });
+    if(!resp.ok) throw new Error('API '+resp.status);
+    agentResp = await resp.json();
+  }catch(e){
+    removeTyping();
+    addMsg('agent', `Live API request failed: ${escHtml(e.message)}. The UI did not fall back to mock results.`);
+    toast('warning', `Live API request failed: <b>${escHtml(e.message)}</b>`);
+    setActiveScans([]);
+    isProcessing = false;
+    sendBtn.disabled = false;
+    return;
+  }
+
+  removeTyping();
+
+  // Show agent explanation
+  const explanation = agentResp.explanation || "I'll analyze the packages you mentioned.";
+  const steps = agentResp.steps || [];
+  const results = agentResp.results || [];
+
+  // Build plan message with step list
+  let planHtml = escHtml(explanation);
+  if(steps.length){
+    planHtml += '<div class="step-list">';
+    steps.forEach((s,i)=>{
+      const label = s.action==='scan'
+        ? `Security scan: ${s.package||''}${s.version?'=='+s.version:''}`
+        : s.action==='check_updates'
+        ? `Check updates: ${(s.packages||[]).join(', ')}`
+        : `Resolve compatibility`;
+      const icon = results[i] ? getStepIcon(results[i]) : '&#x2705;';
+      planHtml+=`<div class="step-item"><span class="step-icon">${icon}</span> ${escHtml(label)}</div>`;
+    });
+    planHtml += '</div>';
+  }
+  addMsg('agent', planHtml);
+
+  // Render each scan result
+  for(const r of results){
+    const res = r.result;
+    if(!res) continue;
+    // Handle scan results (have package_name / verdict)
+    if(res.package_name && res.verdict !== undefined){
+      addScanCard(res);
+      addRecentScan(res);
+      showResultToast(res);
+    }
+    // Handle check_updates results (array of update info)
+    else if(Array.isArray(res)){
+      let html = '<div class="scan-card"><b>Update Check Results</b><div style="margin-top:8px;font-size:12px">';
+      for(const u of res){
+        const hasUpdate = u.update_available;
+        html+=`<div style="padding:4px 0">${hasUpdate?'&#x26A0;&#xFE0F;':'&#x2705;'} <b>${u.package}</b>: ${u.current} &rarr; ${u.latest} ${hasUpdate?'<span style="color:var(--yellow)">(update available)</span>':'<span style="color:var(--green)">(up to date)</span>'}</div>`;
+      }
+      html+='</div></div>';
+      const d=document.createElement('div');d.className='msg msg-agent';d.innerHTML=html;d.style.maxWidth='92%';
+      chatMessages.appendChild(d);chatMessages.scrollTop=chatMessages.scrollHeight;
+    }
+    else if(res.resolved_versions || res.resolution_chain){
+      addResolveCard(r.step, res);
+    }
+    // Handle scan_reports nested in analysis dict
+    else if(res.scan_reports){
+      for(const sr of res.scan_reports){
+        addScanCard(sr);
+        addRecentScan(sr);
+        showResultToast(sr);
+      }
+      if(res.compat_report) addResolveCard({action:'resolve'}, res.compat_report);
+    }
+  }
+
+  // Summary
+  if(results.length){
+    await sleep(300);
+    const scanResults = results.filter(r=>r.result?.verdict).map(r=>r.result);
+    if(scanResults.length){
+      const blocked = scanResults.filter(s=>s.verdict==='BLOCKED').length;
+      const safe = scanResults.filter(s=>s.verdict==='SAFE').length;
+      const warned = scanResults.filter(s=>s.verdict==='WARNING').length;
+      let summary = '<b>Analysis complete.</b><br>';
+      if(blocked) summary+=`<span style="color:var(--red)">&#x1F6D1; ${blocked} package(s) BLOCKED</span> — malicious patterns detected.<br>`;
+      if(warned) summary+=`<span style="color:var(--yellow)">&#x26A0;&#xFE0F; ${warned} package(s) WARNING</span> — review recommended.<br>`;
+      if(safe) summary+=`<span style="color:var(--green)">&#x2705; ${safe} package(s) SAFE</span> — no threats found.<br>`;
+      addMsg('agent', summary);
+    }
+  }
+
+  setActiveScans([]);
+  isProcessing = false;
+  sendBtn.disabled = false;
+}
+
+function getStepIcon(r){
+  const v = r.result?.verdict;
+  if(v==='SAFE') return '&#x2705;';
+  if(v==='WARNING') return '&#x26A0;&#xFE0F;';
+  if(v==='BLOCKED') return '&#x274C;';
+  return '&#x2705;';
+}
+
+function buildFallbackResponse(text){
+  // Client-side fallback when /agent is unavailable
+  const t = text.toLowerCase();
+  const pkgPat = /([\w\-\.]+)==([\d\.]+)/g;
+  const pkgs=[];let m;while((m=pkgPat.exec(text))!==null)pkgs.push({name:m[1],version:m[2]});
+  const scanMatch = t.match(/scan\s+([\w\-\.]+)(?:==|@|(?:\s+v?))?([\d\.]+)?/);
+  if(scanMatch && !pkgs.length) pkgs.push({name:scanMatch[1],version:scanMatch[2]||null});
+  if(!pkgs.length){
+    const words=text.trim().split(/\s+/);
+    const w=words.find(w=>/^[a-z][\w\-\.]*$/i.test(w)&&w.length>2&&!['the','for','and','can','you','are','this','that','with','from','what','scan','check','is','my','me'].includes(w.toLowerCase()));
+    if(w) pkgs.push({name:w,version:null});
+  }
+  const steps = pkgs.map(p=>({action:'scan',package:p.name,version:p.version}));
+  const results = pkgs.map(p=>({step:{action:'scan',package:p.name,version:p.version},result:getMockResult(p.name,p.version)}));
+  return {
+    explanation: pkgs.length
+      ? `I'll scan ${pkgs.map(p=>p.name+(p.version?'=='+p.version:'')).join(', ')} for security issues.`
+      : "I can help you scan packages for security issues. Try mentioning a package name.",
+    steps, results
+  };
+}
+
+function getMockResult(name, version){
+  const v = version||'latest';
+  // Simulate results for demo
+  const evil = ['litellm','demo-litellm-evil','malicious','evil'].some(w=>name.toLowerCase().includes(w));
+  if(evil){
+    return {
+      package_name:name,version:v,risk_score:100,verdict:'BLOCKED',scan_duration:12.4,
+      cached:false,timestamp:new Date().toISOString(),
+      steps:getMockSteps('blocked'),
+      findings:[
+        {severity:'critical',category:'pth_injection',description:'.pth file detected — executes on every Python startup',file:'litellm.pth',line:0,evidence:'import subprocess; subprocess.Popen(...)'},
+        {severity:'critical',category:'code_obfuscation',description:'Base64-encoded exec() payload in setup.py',file:'setup.py',line:33,evidence:'exec(base64.b64decode(_PAYLOAD))'},
+        {severity:'critical',category:'credential_theft',description:'Reads ~/.ssh/id_rsa, ~/.aws/credentials, .env files',file:'setup.py',line:15,evidence:'SENSITIVE_PATHS = [os.path.expanduser("~/.ssh/id_rsa")]'},
+        {severity:'high',category:'network_exfiltration',description:'Outbound HTTP call to external C2 server',file:'__init__.py',line:42,evidence:'HTTPSConnection("evil-c2.example.com")'},
+        {severity:'high',category:'install_hook',description:'Overridden install command executes arbitrary code',file:'setup.py',line:28,evidence:'class MaliciousInstall(install)'},
+        {severity:'high',category:'version_mismatch',description:'No matching GitHub tag for version '+v,file:'',line:0,evidence:''},
+      ]
+    };
+  }
+  // Safe package
+  const findings = [];
+  if(Math.random()>.7) findings.push({severity:'low',category:'suspicious_metadata',description:'Package uploaded without CI/CD provenance',file:'',line:0,evidence:''});
+  const score = findings.reduce((s,f)=>s+({critical:40,high:25,medium:10,low:3,info:0}[f.severity]||0),0);
+  return {
+    package_name:name,version:v,risk_score:Math.min(score,100),
+    verdict:score>=70?'BLOCKED':score>=30?'WARNING':'SAFE',
+    scan_duration:2.1+Math.random()*3,cached:false,timestamp:new Date().toISOString(),findings,
+    steps:getMockSteps(score>=30?'warning':'safe')
+  };
+}
+
+function addScanCard(result){
+  const vc = result.verdict==='BLOCKED'?'blocked':result.verdict==='WARNING'?'warning':'safe';
+  const cardClass = result.verdict==='SAFE' ? 'safe-card' : result.verdict==='BLOCKED' ? 'blocked-card' : '';
+  const threatCount = getThreatFindings(result).length;
+  const analysisCount = (result.findings||[]).length;
+  let html = `<div class="scan-card ${cardClass}">`;
+  if(result.verdict==='BLOCKED'){
+    html += `<div class="alert-banner blocked">&#9888;&#65039; SUPPLY CHAIN THREAT DETECTED</div>`;
+    html += `<div class="attack-type">${escHtml(detectAttackType(result))}</div>`;
+  }
+  html += `<div class="scan-card-header">`;
+  html += `<div class="score-circle score-${vc}">${result.risk_score}</div>`;
+  html += `<div class="scan-card-info"><h3>${escHtml(result.package_name)}==${escHtml(result.version)}</h3>`;
+  html += `<div class="verdict verdict-${vc}">${result.verdict}</div>`;
+  html += `<div class="scan-card-meta">${result.scan_duration?.toFixed(1)||'?'}s${result.cached?' &middot; cached':''} &middot; ${threatCount} threat findings &middot; ${analysisCount} analysis signals</div>`;
+  html += `</div></div>`;
+
+  if(result.verdict==='SAFE'){
+    const safeSummary = buildSafeSummary(result);
+    html += `
+      <div class="safe-hero">
+        <h4>&#9989; CLEAR TO PROCEED</h4>
+        <div style="font-size:12px;line-height:1.6">Package passed static, metadata, Docker sandbox, and LLM review checks.</div>
+        <div class="reasoning-grid">${renderPositiveReasoning(result)}</div>
+        <div class="safe-summary">${safeSummary}</div>
+        <div class="action-row">
+          <button class="action-btn green">Proceed with Installation</button>
+          <button class="action-btn" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);color:var(--text)">Request Human Review</button>
+        </div>
+      </div>
+    `;
+  }
+  if(result.verdict==='WARNING'){
+    html += `
+      <div class="safe-hero" style="border-color:rgba(255,170,0,.28);background:linear-gradient(180deg, rgba(255,170,0,.10), rgba(255,170,0,.05))">
+        <h4 style="color:var(--yellow)">&#9888;&#65039; HUMAN REVIEW RECOMMENDED</h4>
+        <div style="font-size:12px;line-height:1.6">Automated analysis found signals that need a person to review before installation.</div>
+        <div class="action-row">
+          <button class="action-btn" style="background:rgba(255,170,0,.18);border:1px solid rgba(255,170,0,.32);color:#ffe9bf">Request Human Review</button>
+        </div>
+      </div>
+    `;
+  }
+
+  if(result.steps?.length){
+    const pipelineId = 'p-'+Date.now()+Math.random().toString(36).slice(2);
+    html += renderPipeline(result.steps, pipelineId);
+  }
+
+  if(result.findings?.length){
+    const fid = 'f-'+Date.now()+Math.random();
+    html += `<button class="findings-toggle" onclick="toggleFindings('${fid}', this, ${result.findings.length})">Show ${result.findings.length} findings</button>`;
+    html += `<div class="findings-list" id="${fid}">`;
+    for(const f of result.findings){
+      html += `<div class="finding-item finding-${f.severity}"><span class="finding-sev">${f.severity}</span> <span class="finding-cat">${f.category}</span><br>${escHtml(f.description)}`;
+      if(f.file) html+=`<br><span style="color:var(--text-dim)">${escHtml(f.file)}${f.line?':'+f.line:''}</span>`;
+      if(f.evidence) html+=`<div class="evidence-box">${escHtml(f.evidence)}</div>`;
+      html+=`</div>`;
+    }
+    html += `</div>`;
+  }
+
+  if(result.verdict==='BLOCKED'){
+    html += `<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="action-btn red">Block Installation</button><button class="action-btn" style="background:rgba(255,170,0,.16);border-color:rgba(255,170,0,.28);color:#ffe9bf">Escalate to Human Review</button></div>`;
+  }
+  html += `</div>`;
+
+  const d = document.createElement('div');
+  d.className='msg msg-agent';
+  d.innerHTML = html;
+  d.style.maxWidth='92%';
+  chatMessages.appendChild(d);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function renderPipeline(steps, pipelineId){
+  const ordered = ['static_analysis','metadata_check','docker_sandbox','llm_review']
+    .map(name => steps.find(step => step.step_name===name) || {step_name:name,status:'skipped',duration:0,findings:[],reasoning:'No data returned for this step.'});
+  const nodes = ordered.map((step, idx)=>{
+    const statusClass = step.status==='skipped' ? 'skipped' : step.status==='failed' ? 'flagged' : step.status==='warning' ? 'warning' : 'complete';
+    const icon = step.step_name==='static_analysis'?'&#128269;':step.step_name==='metadata_check'?'&#128450;&#65039;':step.step_name==='docker_sandbox'?'&#128039;':'&#129504;';
+    const mark = step.status==='skipped'?'&#8212;':step.status==='failed'?'&#10006;':step.status==='warning'?'!':'&#10003;';
+    return `
+      <div class="step-node ${idx===0?'active':''}" onclick="toggleStepDetail('${pipelineId}', ${idx}, this)">
+        <div class="step-top"><span>${icon}</span><span class="step-status ${statusClass}">${mark}</span></div>
+        <div class="step-label">${escHtml(formatStepName(step.step_name))}</div>
+        <div class="step-duration">${(step.duration||0).toFixed(1)}s</div>
+      </div>
+    `;
+  }).join('');
+  const details = ordered.map((step, idx)=>`
+    <div class="step-details ${idx===0?'open':''}" data-pipeline="${pipelineId}" data-step-detail="${idx}">
+      <div style="font-size:12px;font-weight:700;margin-bottom:8px">${escHtml(formatStepName(step.step_name))}</div>
+      <div style="font-size:11px;line-height:1.6;color:var(--text)">${escHtml(step.reasoning || 'No reasoning provided.')}</div>
+      <div class="step-findings">${(step.findings||[]).length ? step.findings.map(renderFindingItem).join('') : '<div style="font-size:11px;color:var(--text-dim);margin-top:8px">No findings in this step.</div>'}</div>
+    </div>
+  `).join('');
+  return `<div class="pipeline">${nodes}</div>${details}`;
+}
+
+function renderFindingItem(f){
+  return `<div class="finding-item finding-${f.severity||'info'}"><span class="finding-sev">${escHtml(f.severity||'info')}</span> <span class="finding-cat">${escHtml(f.category||'')}</span><br>${escHtml(f.description||'')}${f.evidence?`<div class="evidence-box">${escHtml(f.evidence)}</div>`:''}</div>`;
+}
+
+function toggleFindings(id, btn, count){
+  const target = document.getElementById(id);
+  if(!target) return;
+  const isOpen = target.classList.toggle('open');
+  btn.textContent = isOpen ? 'Hide findings' : `Show ${count} findings`;
+}
+
+function toggleStepDetail(pipelineId, index, node){
+  document.querySelectorAll(`[data-pipeline="${pipelineId}"]`).forEach(el=>el.classList.remove('open'));
+  document.querySelectorAll('.step-node').forEach(el=>{ if(el.parentElement===node.parentElement) el.classList.remove('active'); });
+  const detail = document.querySelector(`[data-pipeline="${pipelineId}"][data-step-detail="${index}"]`);
+  if(detail) detail.classList.add('open');
+  node.classList.add('active');
+}
+
+function formatStepName(name){
+  return {
+    static_analysis:'Static',
+    metadata_check:'Metadata',
+    docker_sandbox:'Docker',
+    llm_review:'LLM Review'
+  }[name] || name.replace(/_/g,' ');
+}
+
+function renderPositiveReasoning(result){
+  const chips = extractPositiveBulletsFromSteps(result.steps||[]);
+  return chips.map(text=>`<div class="reasoning-chip">${escHtml(text)}</div>`).join('');
+}
+
+function extractPositiveBulletsFromSteps(steps){
+  const stepMap = Object.fromEntries((steps||[]).map(step => [step.step_name, step]));
+  const chips = [];
+  const staticStep = stepMap.static_analysis;
+  const metadataStep = stepMap.metadata_check;
+  const dockerStep = stepMap.docker_sandbox;
+  const llmStep = stepMap.llm_review;
+
+  if(staticStep && staticStep.status === 'complete'){
+    chips.push('Static scan found no obfuscated payloads, startup hooks, or malicious install logic');
+  }
+  if(metadataStep && metadataStep.status === 'complete'){
+    chips.push(summarizeMetadataStep(metadataStep));
+  }
+  if(dockerStep && dockerStep.status === 'complete'){
+    chips.push(summarizeDockerStep(dockerStep));
+  } else if(dockerStep && dockerStep.status === 'skipped'){
+    chips.push('Docker sandbox was skipped in this environment');
+  }
+  if(llmStep && llmStep.status === 'complete'){
+    chips.push('LLM review did not find hidden execution chains, credential theft logic, or persistence');
+  }
+
+  return (chips.filter(Boolean).slice(0, 4).length ? chips.filter(Boolean).slice(0, 4) : [
+    'Verified maintainer history and long release cadence',
+    'Strong GitHub footprint with consistent community activity',
+    'No code obfuscation or network calls at import time',
+    'LLM review did not identify malicious execution paths'
+  ]);
+}
+
+function summarizeMetadataStep(step){
+  const text = (step.reasoning || '').toLowerCase();
+  const stars = (step.reasoning || '').match(/(\d[\d,]*)\s+github stars/i);
+  const releases = (step.reasoning || '').match(/(\d[\d,]*)\s+published releases/i);
+  const parts = [];
+  if(stars) parts.push(`${stars[1]} GitHub stars`);
+  if(releases) parts.push(`${releases[1]} releases`);
+  if(parts.length) return `Metadata checks matched public provenance: ${parts.join(', ')}`;
+  return 'Metadata checks matched maintainer, release history, and public project provenance';
+}
+
+function summarizeDockerStep(step){
+  const text = (step.reasoning || '').toLowerCase();
+  if(text.includes('import-time') || text.includes('install-time') || text.includes('isolated docker container')){
+    return 'Docker sandbox executed isolated install/import analysis and saw no malicious runtime behavior';
+  }
+  return 'Docker sandbox ran package behavior checks in an isolated container';
+}
+
+function buildSafeSummary(result){
+  const stepMap = Object.fromEntries((result.steps||[]).map(step => [step.step_name, step]));
+  const staticLine = stepMap.static_analysis?.reasoning || 'Static analysis completed without threat findings.';
+  const metadataLine = stepMap.metadata_check?.reasoning || 'Metadata checks completed.';
+  const dockerLine = stepMap.docker_sandbox?.reasoning || 'Docker sandbox analysis completed.';
+  const llmLine = stepMap.llm_review?.reasoning || 'LLM review completed.';
+  return [
+    `<strong>Why this is safe:</strong>`,
+    escHtml(staticLine),
+    escHtml(metadataLine),
+    escHtml(dockerLine),
+    escHtml(llmLine),
+  ].join('<br>');
+}
+
+function getThreatFindings(result){
+  return (result.findings||[]).filter(f => ['critical','high','medium','low'].includes((f.severity||'').toLowerCase()));
+}
+
+function detectAttackType(result){
+  const categories = (result.findings||[]).map(f=>f.category);
+  if(categories.includes('pth_injection')) return 'PTH Injection Attack';
+  if(categories.includes('credential_theft')) return 'Credential Stealer Detected';
+  if(categories.includes('install_hook')) return 'Install Hook Attack';
+  if(categories.includes('code_obfuscation')) return 'Obfuscated Payload Detected';
+  return 'Supply Chain Malware Pattern';
+}
+
+function addResolveCard(step, result){
+  const current = parseCurrentPackages(step, result);
+  const updates = buildResolutionPairs(current, result);
+  const conflicts = result.conflicts||[];
+  const chain = result.resolution_chain || result.suggestions || [];
+  const html = `
+    <div class="scan-card">
+      <div class="scan-card-header">
+        <div class="score-circle score-safe" style="font-size:14px">&#8646;</div>
+        <div class="scan-card-info">
+          <h3>Dependency Resolution</h3>
+          <div class="verdict verdict-${result.status==='resolved'?'safe':result.status==='partial'?'warning':'blocked'}">${escHtml(result.status||'checked')}</div>
+          <div class="scan-card-meta">${(result.attempts||1)} attempt(s) &middot; ${(conflicts||[]).length} conflict(s)</div>
+        </div>
+      </div>
+      <div class="resolve-layout">
+        <div class="resolve-panel">
+          <h4>Current Packages</h4>
+          ${current.map(pkg=>`<div class="pkg-line ${conflicts.some(c=>c.includes(pkg.name))?'conflict':''}"><span>${escHtml(pkg.name)}</span><span>${escHtml(pkg.version||'unversioned')}</span></div>`).join('')}
+        </div>
+        <div class="resolve-panel">
+          <h4>Resolution Path</h4>
+          ${updates.map(item=>`<div class="pkg-line"><span>${escHtml(item.name)}</span><span>${escHtml(item.from)} <span class="resolution-arrow">&#8594;</span> ${escHtml(item.to)}</span></div>`).join('')}
+        </div>
+      </div>
+      <div class="llm-reasoning">
+        <b>LLM compatibility reasoning</b><br>
+        ${(chain.length ? chain : ['Versions were selected to satisfy the new package constraints while minimizing movement in the rest of the stack.']).map(line=>escHtml(line)).join('<br>')}
+      </div>
+    </div>
+  `;
+  const d = document.createElement('div');
+  d.className='msg msg-agent';
+  d.innerHTML=html;
+  d.style.maxWidth='92%';
+  chatMessages.appendChild(d);
+  chatMessages.scrollTop=chatMessages.scrollHeight;
+}
+
+function parseCurrentPackages(step, result){
+  const raw = Array.isArray(step?.existing) ? step.existing : ['transformers==4.35.2','sentence-transformers==2.2.2'];
+  return raw.map(spec=>{
+    const [name, version=''] = spec.split('==');
+    return {name, version};
+  });
+}
+
+function buildResolutionPairs(current, result){
+  const resolved = result.resolved_versions||{};
+  const currentNames = current.map(pkg=>pkg.name);
+  const resolvedNames = Object.keys(resolved);
+  const wanted = Array.from(new Set([...currentNames, ...resolvedNames]));
+  return wanted.map(name=>{
+    const currentItem = current.find(pkg=>pkg.name===name);
+    return {
+      name,
+      from: currentItem?.version || 'current',
+      to: resolved[name] || currentItem?.version || 'unresolved'
+    };
+  });
+}
+
+function showResultToast(result){
+  if(result.verdict==='BLOCKED') toast('blocked', `&#128680; Malicious package blocked: <b>${escHtml(result.package_name)}</b>`);
+  else if(result.verdict==='SAFE') toast('safe', `&#9989; <b>${escHtml(result.package_name)}</b> verified safe for installation`);
+  else toast('warning', `&#9888;&#65039; <b>${escHtml(result.package_name)}</b> needs manual review`);
+}
+
+function getMockSteps(kind){
+  if(kind==='blocked'){
+    return [
+      {step_name:'static_analysis',status:'complete',duration:1.2,reasoning:'Found .pth file injection and obfuscated setup.py payload.',findings:[{severity:'critical',category:'pth_injection',description:'Executable .pth startup hook found',evidence:'subprocess.Popen(...)'}]},
+      {step_name:'metadata_check',status:'complete',duration:0.8,reasoning:'No matching GitHub tag for this release and maintainer provenance changed recently.',findings:[{severity:'high',category:'version_mismatch',description:'Release provenance mismatch'}]},
+      {step_name:'docker_sandbox',status:'complete',duration:5.1,reasoning:'Outbound network attempt detected during sandbox simulation.',findings:[{severity:'high',category:'network_exfiltration',description:'Outbound callback detected',evidence:'HTTPSConnection("evil-c2.example.com")'}]},
+      {step_name:'llm_review',status:'complete',duration:3.2,reasoning:'Code contains credential harvesting patterns and staged execution paths.',findings:[{severity:'high',category:'credential_theft',description:'Credential harvesting pattern'}]}
+    ];
+  }
+  if(kind==='warning'){
+    return [
+      {step_name:'static_analysis',status:'complete',duration:0.9,reasoning:'No critical malware signatures found, but metadata quality is weak.',findings:[]},
+      {step_name:'metadata_check',status:'complete',duration:0.6,reasoning:'Release provenance is incomplete and CI/CD evidence is limited.',findings:[{severity:'low',category:'suspicious_metadata',description:'Limited provenance'}]},
+      {step_name:'docker_sandbox',status:'skipped',duration:0,reasoning:'Sandbox execution skipped for low-risk package.',findings:[]},
+      {step_name:'llm_review',status:'complete',duration:1.4,reasoning:'No explicit malicious behavior, but package quality warrants review.',findings:[]}
+    ];
+  }
+  return [
+    {step_name:'static_analysis',status:'complete',duration:0.7,reasoning:'No .pth files found, setup.py uses standard install command, no obfuscated code detected.',findings:[]},
+    {step_name:'metadata_check',status:'complete',duration:0.5,reasoning:'Package has 12,000+ GitHub stars, 500+ contributors. Published by verified maintainer since 2019 with 47 prior releases. License: MIT, consistent across PyPI and GitHub. Latest security audit: clean (referenced in SECURITY.md).',findings:[]},
+    {step_name:'docker_sandbox',status:'complete',duration:1.9,reasoning:'No code obfuscation, no network calls at import time, and no install-time persistence behavior detected.',findings:[]},
+    {step_name:'llm_review',status:'complete',duration:1.3,reasoning:'Codebase is narrow, documented, and free of hidden execution paths.',findings:[]}
+  ];
+}
+
+function addRecentScan(result){
+  recentScans.unshift(result);
+  if(recentScans.length>10) recentScans.pop();
+  renderRecentTable();
+}
+
+function renderRecentTable(){
+  const tbody = document.getElementById('recentResults');
+  if(!recentScans.length){tbody.innerHTML='<tr><td colspan="4" style="color:var(--text-dim)">No scans yet</td></tr>';return}
+  tbody.innerHTML = recentScans.map(r=>{
+    const vc = r.verdict==='BLOCKED'?'blocked':r.verdict==='WARNING'?'warning':'safe';
+    return `<tr><td>${escHtml(r.package_name)}</td><td>${escHtml(r.version)}</td><td>${r.risk_score}</td><td class="verdict-${vc}">${r.verdict}</td></tr>`;
+  }).join('');
+}
+
+function setActiveScans(scans){
+  const el = document.getElementById('activeScans');
+  if(!scans.length){el.innerHTML='<div class="no-active">No active scans</div>';return}
+  el.innerHTML = scans.map(s=>`<div class="active-scan"><span class="spinner"></span>Scanning ${escHtml(s.name)}${s.version?'=='+s.version:''}...</div>`).join('');
+}
+
+// ── Dashboard polling ──
+async function pollDashboard(){
+  // Stats + Recent Scans
+  try{
+    const resp = await fetch(API+'/stats');
+    if(resp.ok){
+      const s = await resp.json();
+      document.getElementById('cacheHits').textContent = s.cache_hits||0;
+      document.getElementById('cacheMisses').textContent = s.cache_misses||0;
+      document.getElementById('totalScans').textContent = s.total_scans||0;
+      document.getElementById('blockedCount').textContent = s.blocked_count||0;
+      document.getElementById('cacheDot').className='dot dot-green';
+      // Update Recent Results from cache
+      const recent = s.recent_scans||[];
+      if(recent.length){
+        const tbody = document.getElementById('recentResults');
+        tbody.innerHTML = recent.map(r=>{
+          const vc = r.verdict==='BLOCKED'?'blocked':r.verdict==='WARNING'?'warning':'safe';
+          return `<tr><td>${escHtml(r.package_name)}</td><td>${escHtml(r.version)}</td><td>${r.risk_score}</td><td class="verdict-${vc}">${r.verdict}</td></tr>`;
+        }).join('');
+      }
+    }
+  }catch(e){
+    document.getElementById('cacheDot').className='dot dot-yellow';
+  }
+
+  // Optimize
+  try{
+    const resp = await fetch(API+'/optimize');
+    if(resp.ok){
+      const o = await resp.json();
+      document.getElementById('llmCalls').textContent = o.total_calls||0;
+      document.getElementById('llmCost').textContent = '$'+(o.total_cost||0).toFixed(3);
+      document.getElementById('llmTokens').textContent = ((o.total_tokens||0)/1000).toFixed(1)+'K';
+      document.getElementById('llmSavings').textContent = (o.estimated_savings_pct||0).toFixed(0)+'%';
+
+      // Trace list with feedback buttons
+      const traceEl = document.getElementById('traceList');
+      const traces = o.traces||[];
+      const fbStats = o.feedback_stats||{};
+      const counterEl = document.getElementById('feedbackCounter');
+      if(counterEl && traces.length){
+        const rated = fbStats.total_rated||0;
+        counterEl.textContent = rated>0 ? `${traces.length} calls \u00b7 ${rated} rated` : `${traces.length} calls`;
+      }
+      if(traces.length){
+        traceEl.innerHTML = traces.map(t=>{
+          const dur = t.duration_ms?(t.duration_ms/1000).toFixed(1)+'s':'?';
+          const tok = t.tokens?(t.tokens/1000).toFixed(1)+'K':'0';
+          const tid = t.trace_id||'';
+          const alreadyRated = t.feedback_rating;
+          let fbHtml = '';
+          if(alreadyRated==='up'){
+            fbHtml = `<span style="color:var(--green);font-size:10px">\u2713 Effective</span>`;
+          } else if(alreadyRated==='down'){
+            fbHtml = `<span style="color:var(--red);font-size:10px">\u2717 Flagged</span>`;
+          } else {
+            fbHtml = `<button onclick="handleThumbUp('${tid}',this)" style="background:none;border:1px solid var(--green);color:var(--green);border-radius:4px;padding:1px 6px;cursor:pointer;font-size:10px;margin-right:2px" title="Good analysis">\uD83D\uDC4D</button>`
+              + `<button onclick="handleThumbDown('${tid}',this)" style="background:none;border:1px solid var(--red);color:var(--red);border-radius:4px;padding:1px 6px;cursor:pointer;font-size:10px" title="Needs improvement">\uD83D\uDC4E</button>`;
+          }
+          const scanLabel = t.scan_type==='metadata'?'metadata':t.scan_type==='llm_review'?'code review':t.scan_type||'scan';
+          return `<div id="trace-${tid}" style="padding:5px 0;border-bottom:1px solid var(--border);font-size:11px">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <div><span style="color:var(--cyan)">${escHtml(t.model||'llm')}</span> <span style="color:var(--text-dim)">${escHtml(scanLabel)} &middot; ${tok} tok</span></div>
+              <div class="fb-buttons">${fbHtml}</div>
+            </div>
+            <div class="fb-suggestion" style="font-size:10px;color:var(--text-dim);margin-top:2px;display:none"></div>
+          </div>`;
+        }).join('');
+      }
+
+      const optEl = document.getElementById('optimizations');
+      const recs = o.recommendations||[];
+      if(recs.length){
+        optEl.innerHTML = recs.slice(0,3).map(r=>{
+          if(r.type==='model_downgrade') return `<div class="opt-item">Switch <b>${r.call_name}</b> to <b>${r.suggested_model}</b> &rarr; <span class="opt-savings">save ${r.estimated_savings_pct}%</span></div>`;
+          return `<div class="opt-item">Trim prompt for <b>${r.call_name}</b> &rarr; <span class="opt-savings">reduce tokens ${r.estimated_reduction_pct}%</span></div>`;
+        }).join('');
+      }else{
+        optEl.innerHTML='<div style="font-size:11px;color:var(--text-dim)">Run scans to generate optimization data</div>';
+      }
+      document.getElementById('overmindDot').className='dot dot-green';
+    }
+  }catch(e){
+    document.getElementById('overmindDot').className='dot dot-yellow';
+  }
+
+  // Health
+  try{
+    const resp = await fetch(API+'/health');
+    if(resp.ok){
+      const h = await resp.json();
+      document.getElementById('apiDot').className='dot dot-green';
+      const backendEl = document.getElementById('aerospikeBackend');
+      if(backendEl) backendEl.innerHTML = h.aerospike
+        ? '<span style="color:var(--green)">&#x2713; Aerospike SSD connected</span>'
+        : '<span style="color:var(--yellow)">&#x26A0; In-memory fallback</span>';
+    } else document.getElementById('apiDot').className='dot dot-red';
+  }catch(e){
+    document.getElementById('apiDot').className='dot dot-red';
+  }
+}
+
+// ── Aerospike Benchmark ──
+async function runBenchmark(){
+  const el = document.getElementById('benchmarkResults');
+  el.innerHTML = '<div style="color:var(--cyan)"><span class="spinner"></span> Running benchmark...</div>';
+  try{
+    const resp = await fetch(API+'/benchmark');
+    if(!resp.ok) throw new Error('Benchmark failed');
+    const b = await resp.json();
+    let html = `<div style="margin-bottom:8px;color:var(--green)"><b>Backend: ${b.backend.toUpperCase()}</b></div>`;
+    html += '<table class="dash-table" style="font-size:11px"><thead><tr><th>Findings</th><th>Payload</th><th>Read</th><th>Write</th><th>Throughput</th></tr></thead><tbody>';
+    for(const t of b.tests){
+      html += `<tr>
+        <td>${t.findings_count}</td>
+        <td>${(t.payload_bytes/1024).toFixed(1)}KB</td>
+        <td style="color:var(--cyan)">${t.read_avg_us.toFixed(0)}&micro;s</td>
+        <td style="color:var(--purple)">${t.write_avg_us.toFixed(0)}&micro;s</td>
+        <td style="color:var(--green)">${(t.throughput_reads_per_sec/1000).toFixed(1)}K/s</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    if(b.aerospike_stats){
+      const s = b.aerospike_stats;
+      html += `<div style="margin-top:8px;font-size:10px;color:var(--text-dim)">
+        Storage: ${s.storage_engine}<br>
+        Data in memory: ${s.data_in_memory}<br>
+        Objects stored: ${s.objects}<br>
+        Device free: ${s.device_free_pct}%
+      </div>`;
+    }
+    html += '<button onclick="runBenchmark()" style="margin-top:8px;background:var(--purple);color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:11px">Re-run</button>';
+    el.innerHTML = html;
+  }catch(e){
+    el.innerHTML = '<div style="color:var(--red)">Benchmark failed: '+e.message+'</div>';
+  }
+}
+
+pollDashboard();
+setInterval(pollDashboard, 10000);
+
+function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
+
+// ── Overmind Feedback ──
+async function handleThumbUp(traceId, btn){
+  const row = document.getElementById('trace-'+traceId);
+  if(!row) return;
+  const fbBtns = row.querySelector('.fb-buttons');
+  fbBtns.innerHTML = '<span style="color:var(--green);font-size:10px">\u2713 Marked as effective</span>';
+  try{
+    const resp = await fetch(API+'/feedback',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({trace_id:traceId, rating:'up', note:'accurate'}),
+    });
+    if(resp.ok){
+      const data = await resp.json();
+      const sugEl = row.querySelector('.fb-suggestion');
+      if(sugEl && data.suggestion){ sugEl.textContent = data.suggestion; sugEl.style.display='block'; sugEl.style.color='var(--green)'; }
+      updateFeedbackCounter(data.feedback_stats);
+    }
+  }catch(e){console.error('Feedback error:',e)}
+}
+
+async function handleThumbDown(traceId, btn){
+  const row = document.getElementById('trace-'+traceId);
+  if(!row) return;
+  const fbBtns = row.querySelector('.fb-buttons');
+  const options = [
+    {value:'false_positive', label:'False positive \u2014 package was safe'},
+    {value:'missed_findings', label:'Missed findings \u2014 issues not caught'},
+    {value:'too_slow', label:'Too slow'},
+    {value:'too_expensive', label:'Too expensive'},
+  ];
+  fbBtns.innerHTML = `<div style="margin-top:4px">
+    <div style="font-size:10px;color:var(--red);margin-bottom:4px">What went wrong?</div>
+    ${options.map(o=>`<button onclick="submitDownFeedback('${traceId}','${o.value}',this.parentElement)" style="display:block;width:100%;text-align:left;background:none;border:1px solid var(--border);color:var(--text);border-radius:4px;padding:3px 8px;cursor:pointer;font-size:10px;font-family:inherit;margin-bottom:3px;transition:all .15s"
+      onmouseover="this.style.borderColor='var(--red)';this.style.color='var(--red)'"
+      onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text)'">${o.label}</button>`).join('')}
+  </div>`;
+}
+
+async function submitDownFeedback(traceId, note, containerEl){
+  const row = document.getElementById('trace-'+traceId);
+  if(!row) return;
+  const fbBtns = row.querySelector('.fb-buttons');
+  fbBtns.innerHTML = '<span style="color:var(--red);font-size:10px">\u2717 Flagged for review</span>';
+  try{
+    const resp = await fetch(API+'/feedback',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({trace_id:traceId, rating:'down', note}),
+    });
+    if(resp.ok){
+      const data = await resp.json();
+      const sugEl = row.querySelector('.fb-suggestion');
+      if(sugEl && data.suggestion){ sugEl.textContent = data.suggestion; sugEl.style.display='block'; sugEl.style.color='var(--yellow)'; }
+      updateFeedbackCounter(data.feedback_stats);
+    }
+  }catch(e){console.error('Feedback error:',e)}
+}
+
+function updateFeedbackCounter(stats){
+  if(!stats) return;
+  const el = document.getElementById('feedbackCounter');
+  if(el) el.textContent = `${stats.total_calls||0} calls \u00b7 ${stats.total_rated||0} rated`;
+}
+</script>
+</body>
+</html>

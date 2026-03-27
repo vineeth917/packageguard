@@ -1,0 +1,40 @@
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    ports:
+      - "8000:8000"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OVERMIND_API_KEY=${OVERMIND_API_KEY}
+      - AEROSPIKE_HOST=aerospike
+      - AEROSPIKE_PORT=3000
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock  # For sandbox Docker-in-Docker
+      - ./packageguard:/app/packageguard
+    depends_on:
+      - aerospike
+
+  aerospike:
+    image: aerospike/aerospike-server:latest
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+      - "3002:3002"
+    volumes:
+      - aerospike-data:/opt/aerospike/data
+
+  # Frontend (optional, for demo)
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - app
+
+volumes:
+  aerospike-data:
